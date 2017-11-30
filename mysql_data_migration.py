@@ -18,6 +18,12 @@ parser.add_argument('--host', help='MySQL host. If left blank, localhost is assu
 parser.add_argument('--table', help='Table whose data you are exporting.')
 parser.add_argument('--instance', help='Spanner instance you are importing to. If blank, SolomonInstance is assumed.')
 parser.add_argument('--platform', help='Source platform you are migrating from. "postgres" or "mysql"')
+parser.add_argument('--logto', help='Dry run (do not write data), and output to this log instead.')
+parser.add_argument('--verbosity', help='How much information to return. Default 1. Values can be 0 - 3')
+
+# I like to define m possible globals, ven if they are not used.
+dryrun = 0
+fileLog = None
 
 args = parser.parse_args()
 if args.db == None:
@@ -35,6 +41,21 @@ if args.user == None:
         args.user = "root"
 if args.mypw == None:
     args.mypw = ""
+if args.logto == None:
+    args.logto == ""
+    dryrun = 1
+    fileLog = open(args.logto, "w+")
+if args.verbosity == None:
+    args.verbosity == 1
+
+def logTo(strMsg, verbosity):
+    global fileLog
+    if verbosity > args.verbosity:
+        return
+    if args.logto == "":
+        print strMsg
+    else:
+        fileLog.write(strMsg)
 
 
 def lsUnicodeList(mylist):
@@ -59,15 +80,18 @@ def lsPgTables(dbSource):
     # Return a list of Postgres tables to cycle through.
     lsTables = []
     strTmp = ""
+    logTo("Copying following tables:", 2)
     if args.table == None:
         pgCur = dbSource.cursor()
         strSQL = "select table_name from information_schema.tables where table_schema = '%s';"%(args.db)
         pgCur.execute(strSQL)
         for row in pgCur.fetchall():
             lsTables.append(row[0])
+            logTo(row[0], 2)
     else:
         # Only build the one specified table
         lsTables.append(args.table)
+        logTo(args.table, 2)
     return lsTables
 
 def lsPgFields(dbSource, pgTable):
@@ -85,7 +109,8 @@ def getPostgresData(dbSource, pgTable):
     lsItem = []
     pgCur = dbSource.cursor()
     strSQL = "select %s from %s"%(", ".join(lsPgFields(dbSource, pgTable)), pgTable)
-    print strSQL
+    logTo("Getting Postgres Data", 1)
+    logTo(strSQL, 1)
     pgcur.execute(strSQL)
     for row in pgCur.fetchall():
         #Sorry, had to strip out all the data type markup code in the fetchall() function output
@@ -93,6 +118,7 @@ def getPostgresData(dbSource, pgTable):
         for r in row:
             lsItem.append(str(r))
         lsData.append(tuple(lsItem))
+        logTo(lsItem, 2)
         ## Change in plans: Leave data type in. Screen in Unicode list.
         #lsData.append(row)
     return lsData
@@ -105,14 +131,17 @@ def lsMyTables(dbSource):
     # Return a list of MySQL tables to cycle through.
     lsTables = []
     strTmp = ""
+    logTo("Copying following tables:", 2)
     if args.table == None:
         mycur = dbSource.cursor()
         mycur.execute("Show tables")
         for row in mycur.fetchall():
             lsTables.append(row[0])
+            logTo(row[0], 2)
     else:
         # Only build the one specified table
         lsTables.append(args.table)
+        logTo(args.table, 2)
     return lsTables
 
 def lsMyFields(dbSource, mytable):
@@ -129,7 +158,8 @@ def getMysqlData(dbSource, mytable):
     lsItem = []
     mycur = dbSource.cursor()
     strSQL = "select %s from %s"%(", ".join(lsMyFields(dbSource, mytable)), mytable)
-    print strSQL
+    logTo("Getting MySQL Data", 1)
+    logTo(strSQL, 1)
     mycur.execute(strSQL)
     for row in mycur.fetchall():
         #Sorry, had to strip out all the data type markup code in the fetchall() function output
@@ -137,6 +167,7 @@ def getMysqlData(dbSource, mytable):
         for r in row:
             lsItem.append(str(r))
         lsData.append(tuple(lsItem))
+        logTo(lsItem, 2)
         ## Change in plans: Leave data type in. Screen in Unicode list.
         #lsData.append(row)
     return lsData
@@ -164,7 +195,7 @@ def insertData(instance_id, database_id, dbSource):
     spanner_client = spanner.Client()
     instance = spanner_client.instance(instance_id)
     database = instance.database(database_id)
-    print("Connection established in %f ms"%((time.clock()-start)*1000))
+    logTo("Connection established in %f ms"%((time.clock()-start)*1000), 1)
 
     for strTable in lsTables(dbSource):
         lsData = getData(dbSource, strTable)
@@ -172,15 +203,19 @@ def insertData(instance_id, database_id, dbSource):
         cntRecords = 0
         while cntRecords < len(lsData):
             #print (lsUnicodeList(lsData[cntRecords:cntRecords + RECORDSATATIME]))
+            logTo("Inserting records into %s..."%(strTable), 2)
             with database.batch() as batch:
                 start = time.clock()
-                batch.insert(
-                    table=strTable,
-                    columns=tuple(lsMyFields(dbSource,strTable)),
-                    values=lsUnicodeList(lsData[cntRecords:cntRecords + RECORDSATATIME]))
-            print('Inserted %i of %i records for table %s in %f ms.'%(cntRecords, len(lsData), strTable, (time.clock()-start)*1000))
+                if dryrun == 1:
+                    logTo(lsData[cntRecords:cntRecords + RECORDSATATIME], 2)
+                else:
+                    batch.insert(
+                        table=strTable,
+                        columns=tuple(lsMyFields(dbSource,strTable)),
+                        values=lsUnicodeList(lsData[cntRecords:cntRecords + RECORDSATATIME]))
+            logTo('Inserted %i of %i records for table %s in %f ms.'%(cntRecords, len(lsData), strTable, (time.clock()-start)*1000), 1)
             cntRecords = cntRecords + RECORDSATATIME
-        print('Inserted %i of %i records for table %s.'%(len(lsData), len(lsData), strTable))
+        logTo('Inserted %i of %i records for table %s.'%(len(lsData), len(lsData), strTable), 1)
 
 
 def main():
