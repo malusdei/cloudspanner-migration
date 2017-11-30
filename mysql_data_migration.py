@@ -53,36 +53,41 @@ def lsUnicodeList(mylist):
         lsUnicodeList.append(tuple(tpTemp))
     return lsUnicodeList
 
+# ======== Postgres Functions ========
+
 def lsPgTables(dbSource):
     # Return a list of Postgres tables to cycle through.
     lsTables = []
     strTmp = ""
     if args.table == None:
-        pgcur = dbSource.cursor()
-        pgcur.execute("select table_name from information_schema.tables where table_schema = '%s';"%(args.db))
-        for row in pgcur.fetchall():
+        pgCur = dbSource.cursor()
+        strSQL = "select table_name from information_schema.tables where table_schema = '%s';"%(args.db)
+        pgCur.execute(strSQL)
+        for row in pgCur.fetchall():
             lsTables.append(row[0])
     else:
         # Only build the one specified table
         lsTables.append(args.table)
     return lsTables
 
-def lsPgFields(dbSource, mytable):
+def lsPgFields(dbSource, pgTable):
     # Return a list of fields for the specified table
     lsFields = []
-    pgcur = dbSource.cursor()
-    pgcur.execute("select * from information_schema.columns where table_schema = '%s' and table_name = '%s'"%(args.db, mytable))
-    for row in pgcur.fetchall():
+    pgCur = dbSource.cursor()
+    strSQL = "select * from information_schema.columns where table_schema = '%s' and table_name = '%s'"%(args.db, pgTable)
+    pgCur.execute(strSQL)
+    for row in pgCur.fetchall():
         lsFields.append(row[0])
     return lsFields
 
-def getPostgresData(dbSource, mytable):
+def getPostgresData(dbSource, pgTable):
     lsData = []
     lsItem = []
-    mycur = dbSource.cursor()
-    print "select %s from %s"%(", ".join(lsMyFields(dbSource, mytable)), mytable)
-    mycur.execute("select %s from %s"%(", ".join(lsMyFields(dbSource, mytable)), mytable))
-    for row in mycur.fetchall():
+    pgCur = dbSource.cursor()
+    strSQL = "select %s from %s"%(", ".join(lsPgFields(dbSource, pgTable)), pgTable)
+    print strSQL
+    pgcur.execute(strSQL)
+    for row in pgCur.fetchall():
         #Sorry, had to strip out all the data type markup code in the fetchall() function output
         lsItem = []
         for r in row:
@@ -91,6 +96,10 @@ def getPostgresData(dbSource, mytable):
         ## Change in plans: Leave data type in. Screen in Unicode list.
         #lsData.append(row)
     return lsData
+
+# ======== ======== ========
+
+# ======== MySQL Functions ========
 
 def lsMyTables(dbSource):
     # Return a list of MySQL tables to cycle through.
@@ -119,8 +128,9 @@ def getMysqlData(dbSource, mytable):
     lsData = []
     lsItem = []
     mycur = dbSource.cursor()
-    print "select %s from %s"%(", ".join(lsMyFields(dbSource, mytable)), mytable)
-    mycur.execute("select %s from %s"%(", ".join(lsMyFields(dbSource, mytable)), mytable))
+    strSQL = "select %s from %s"%(", ".join(lsMyFields(dbSource, mytable)), mytable)
+    print strSQL
+    mycur.execute(strSQL)
     for row in mycur.fetchall():
         #Sorry, had to strip out all the data type markup code in the fetchall() function output
         lsItem = []
