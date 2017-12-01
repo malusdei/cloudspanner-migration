@@ -5,7 +5,7 @@ import argparse
 import MySQLdb
 import psycopg2
 from google.cloud import spanner
-from google.cloud.proto.spanner.v1 import type_pb2
+from google.cloud.spanner_v1.proto import type_pb2
 RECORDSATATIME = 2000
 dbSource = None
 mycur= None
@@ -43,6 +43,7 @@ if args.mypw == None:
     args.mypw = ""
 if args.logto == None:
     args.logto == ""
+else:
     dryrun = 1
     fileLog = open(args.logto, "w+")
 if args.verbosity == None:
@@ -50,9 +51,11 @@ if args.verbosity == None:
 
 def logTo(strMsg, verbosity):
     global fileLog
+    global args
     if verbosity > args.verbosity:
         return
-    if args.logto == "":
+    strMsg = "%s\n"%strMsg
+    if args.logto == None:
         print strMsg
     else:
         fileLog.write(strMsg)
@@ -98,7 +101,8 @@ def lsPgFields(dbSource, pgTable):
     # Return a list of fields for the specified table
     lsFields = []
     pgCur = dbSource.cursor()
-    strSQL = "select * from information_schema.columns where table_schema = '%s' and table_name = '%s'"%(args.db, pgTable)
+    strSQL = "select column_name from information_schema.columns where table_schema = '%s' and table_name = '%s'"%(args.db, pgTable)
+    logTo(strSQL, 1)
     pgCur.execute(strSQL)
     for row in pgCur.fetchall():
         lsFields.append(row[0])
@@ -111,7 +115,7 @@ def getPostgresData(dbSource, pgTable):
     strSQL = "select %s from %s"%(", ".join(lsPgFields(dbSource, pgTable)), pgTable)
     logTo("Getting Postgres Data", 1)
     logTo(strSQL, 1)
-    pgcur.execute(strSQL)
+    pgCur.execute(strSQL)
     for row in pgCur.fetchall():
         #Sorry, had to strip out all the data type markup code in the fetchall() function output
         lsItem = []
@@ -187,6 +191,7 @@ def getData(dbSource, strTable):
         return getMysqlData(dbSource, strTable)
 
 def insertData(instance_id, database_id, dbSource):
+    global dryrun
     lsColumns = []
     lsData = []
     cntRecords = 0
@@ -207,12 +212,15 @@ def insertData(instance_id, database_id, dbSource):
             with database.batch() as batch:
                 start = time.clock()
                 if dryrun == 1:
-                    logTo(lsData[cntRecords:cntRecords + RECORDSATATIME], 2)
+                    #logTo(lsData[cntRecords:cntRecords + RECORDSATATIME], 2)
+                    logTo(lsData[cntRecords], 2)
+            """
                 else:
                     batch.insert(
                         table=strTable,
                         columns=tuple(lsMyFields(dbSource,strTable)),
                         values=lsUnicodeList(lsData[cntRecords:cntRecords + RECORDSATATIME]))
+            """
             logTo('Inserted %i of %i records for table %s in %f ms.'%(cntRecords, len(lsData), strTable, (time.clock()-start)*1000), 1)
             cntRecords = cntRecords + RECORDSATATIME
         logTo('Inserted %i of %i records for table %s.'%(len(lsData), len(lsData), strTable), 1)
@@ -223,7 +231,7 @@ def main():
     database_id = args.db
 
     if args.platform == "postgres":
-        dbSource = psycopg2.connect(hostname=args.host, user=args.user, password=args.mypw, db=args.db)
+        dbSource = psycopg2.connect(host=args.host, user=args.user, password=args.mypw, dbname=args.db)
     else:
         dbSource = MySQLdb.connect(host=args.host, user=args.user, passwd=args.mypw, db=args.db)
     
