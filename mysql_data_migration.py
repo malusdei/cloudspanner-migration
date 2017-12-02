@@ -1,5 +1,6 @@
 #!/bin/python
 
+import sys
 import time
 import argparse
 import MySQLdb
@@ -54,12 +55,12 @@ def logTo(strMsg, verbosity):
     global args
     if verbosity > args.verbosity:
         return
-    strMsg = "%s\n"%strMsg
+    strMsg = "%s\n"%(str(strMsg))
     if args.logto == None:
         print strMsg
     else:
         fileLog.write(strMsg)
-
+        #fileLog.write("\n")
 
 def lsUnicodeList(mylist):
     # Receives a list of tuples, and forces them to be numbers, strings, or nothing.
@@ -101,11 +102,13 @@ def lsPgFields(dbSource, pgTable):
     # Return a list of fields for the specified table
     lsFields = []
     pgCur = dbSource.cursor()
-    strSQL = "select column_name from information_schema.columns where table_schema = '%s' and table_name = '%s'"%(args.db, pgTable)
+    strSQL = "select column_name from information_schema.columns where table_catalog = '%s' and table_name = '%s'"%(args.db, pgTable)
     logTo(strSQL, 1)
     pgCur.execute(strSQL)
     for row in pgCur.fetchall():
         lsFields.append(row[0])
+    if lsFields == []:
+        sys.exit("Unable to retrieve column names.  Check to make sure the table exists and the specified user has  permission to read the table.")
     return lsFields
 
 def getPostgresData(dbSource, pgTable):
@@ -122,7 +125,7 @@ def getPostgresData(dbSource, pgTable):
         for r in row:
             lsItem.append(str(r))
         lsData.append(tuple(lsItem))
-        logTo(lsItem, 2)
+        logTo(lsItem, 3)
         ## Change in plans: Leave data type in. Screen in Unicode list.
         #lsData.append(row)
     return lsData
@@ -155,6 +158,9 @@ def lsMyFields(dbSource, mytable):
     mycur.execute("describe %s"%(mytable))
     for row in mycur.fetchall():
         lsFields.append(row[0])
+    if lsFields == []:
+        sys.exit("Unable to retrieve column names.  Check to make sure the table exists and the specified user has 
+ permission to read the table.")
     return lsFields
 
 def getMysqlData(dbSource, mytable):
@@ -171,7 +177,7 @@ def getMysqlData(dbSource, mytable):
         for r in row:
             lsItem.append(str(r))
         lsData.append(tuple(lsItem))
-        logTo(lsItem, 2)
+        logTo(lsItem, 3)
         ## Change in plans: Leave data type in. Screen in Unicode list.
         #lsData.append(row)
     return lsData
@@ -212,15 +218,13 @@ def insertData(instance_id, database_id, dbSource):
             with database.batch() as batch:
                 start = time.clock()
                 if dryrun == 1:
-                    #logTo(lsData[cntRecords:cntRecords + RECORDSATATIME], 2)
-                    logTo(lsData[cntRecords], 2)
-            """
+                    logTo(lsData[cntRecords:cntRecords + RECORDSATATIME], 3)
+                    #logTo(lsData[cntRecords], 2)
                 else:
                     batch.insert(
                         table=strTable,
                         columns=tuple(lsMyFields(dbSource,strTable)),
                         values=lsUnicodeList(lsData[cntRecords:cntRecords + RECORDSATATIME]))
-            """
             logTo('Inserted %i of %i records for table %s in %f ms.'%(cntRecords, len(lsData), strTable, (time.clock()-start)*1000), 1)
             cntRecords = cntRecords + RECORDSATATIME
         logTo('Inserted %i of %i records for table %s.'%(len(lsData), len(lsData), strTable), 1)
